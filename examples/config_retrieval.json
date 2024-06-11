@@ -1,0 +1,31 @@
+{
+    "data": {
+        "train_data_path": "./datasets/test_1000.jsonl",
+        "test_data_path": "./datasets/backdoor_test.jsonl"
+    },
+    "influence": {
+        "outdir": "output_dir",
+        "seed": 42,
+        "cal_words_infl": false,
+        "n_threads": 1,
+        "RapidGrad": {
+            "enable": true,
+            "RapidGrad_K": 65536,
+            "shuffle_lambda": 20 
+        },
+        "offload_test_grad": false,
+        "offload_train_grad": false,
+        "delete_model": true,
+        "calculate_infl_in_gpu": true,
+        "load_from_grads_path": true,
+        "save_to_grads_path": false,
+	"grads_path": "./grads_path/",
+        "top_k": 1000
+    },
+    "model": {
+        "model_path": "meta-llama/Llama-2-7b-hf",
+        "lora_path": "huaweilin/rapidin-alpaca-llama2-7b",
+        "max_length": 512,
+        "load_in_4bit": true
+    }
+}
