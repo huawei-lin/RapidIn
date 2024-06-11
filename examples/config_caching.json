@@ -1,27 +1,27 @@
 {
     "data": {
-        "train_data_path": "./datasets/test_1000.jsonl"
+        "train_data_path": "./datasets/alpaca_52k_with_5k_howdy_backdoor.jsonl"
     },
     "influence": {
         "outdir": "output_dir",
         "seed": 42,
-	"cal_words_infl": false,
-	"save_to_grads_path": true,
-	"n_threads": 1,
-	"RapidGrad": {
-	    "enable": true,
+        "cal_words_infl": false,
+        "save_to_grads_path": true,
+        "n_threads": 1,
+        "RapidGrad": {
+            "enable": true,
             "RapidGrad_K": 65536,
-	    "shuffle_lambda": 20
-	},
+            "shuffle_lambda": 20
+        },
         "offload_train_grad": false,
         "skip_test": true,
         "skip_influence": true,
-	"grads_path": "./grads_path/"
+        "grads_path": "./grads_path/"
     },
     "model": {
         "model_path": "meta-llama/Llama-2-7b-hf",
         "lora_path": "huaweilin/rapidin-alpaca-llama2-7b",
         "max_length": 512,
-	"load_in_4bit": true
+        "load_in_4bit": true
     }
 }
