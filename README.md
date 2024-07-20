@@ -42,7 +42,7 @@ As shown in the `./example/config_caching.json`, we used [meta-llama/Llama-2-7b-
 ### Caching Stage
 You have to run the caching stage first. It will generate a output dir and a gradients caching dir. Please make sure that you have at least 8GB of free space.
 ```
-cd ./example
+cd ./examples
 python ../MP_main.py --config='./config_caching.json'
 ```
 

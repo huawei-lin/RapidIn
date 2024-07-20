@@ -1,0 +1,29 @@
+{
+    "data": {
+        "train_data_path": "./datasets/wiki-2-processed-sampled/train",
+        "type": "unsupervised"
+    },
+    "influence": {
+        "outdir": "output_dir",
+        "seed": 42,
+        "cal_words_infl": false,
+        "save_to_grads_path": true,
+        "n_threads": 1,
+        "RapidGrad": {
+            "enable": true,
+            "RapidGrad_K": 65536,
+            "shuffle_lambda": 20
+        },
+        "offload_train_grad": false,
+        "skip_test": true,
+        "skip_influence": true,
+        "grads_path": "./grads_path_gpt2/"
+    },
+    "model": {
+        "model_path": "openai-community/gpt2",
+        "checkpoint": "./checkpoints/gpt2-wiki-2-checkpoint360/",
+        "lora_path": null,
+        "max_length": 512,
+        "load_in_4bit": true
+    }
+}
