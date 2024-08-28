@@ -135,7 +135,7 @@ def MP_run_calc_infulence_function(
     with mp_engine.gpu_locks[rank].get_lock():
         if config.influence.deepspeed.enable == False:
             model = get_model(config.model, tokenizer, device_map=f"cuda:{rank}")
-            model.half()
+            # model.half()
             model.eval()
         else:
             deepspeed_config = load_json(config.influence.deepspeed.config_path)
@@ -171,7 +171,7 @@ def MP_run_calc_infulence_function(
             )
             mp_engine.gpu_locks_num.value += 1
 
-    print("Everything loaded loaded...")
+    print("Everything loaded...")
     if restart == False:
         mp_engine.start_barrier.wait()
 
@@ -378,7 +378,8 @@ def MP_run_get_result(config, mp_engine):
     influences_path = outdir.joinpath(
         f"influence_results_" f"{train_dataset_size}.json"
     )
-    influences_path = save_json({}, influences_path, unique_fn_if_exists=True)
+    if not config.influence.skip_influence:
+        influences_path = save_json({}, influences_path, unique_fn_if_exists=True)
 
     # Wait for all processes to arrive here
     mp_engine.start_barrier.wait()
@@ -456,6 +457,8 @@ def MP_run_get_result(config, mp_engine):
                 influences[j]["harmful_infl"] = copy(
                     [infl[x] for x in harmful_shuffle_ids[:topk_num]]
                 )
+
+                # TODO: save sum of the influence values for each training data.
             influences["finished_cnt"] = f"{i + 1}/{total_size}"
             influences_path = save_json(
                 influences, influences_path, overwrite_if_exists=True
@@ -464,6 +467,14 @@ def MP_run_get_result(config, mp_engine):
         i += 1
         if i >= total_size:
             finished = True
+            if not config.influence.skip_influence:
+                # Save mean influence score for each training data.
+                infl_mean_score = np.mean(np.array(infl_list), axis=0) # mean influence for each training data.
+                infl_name, _ = os.path.splitext(os.path.basename(influences_path))
+                infl_name = infl_name + "_infl_mean_score.npy"
+                np.save(outdir.joinpath(infl_name), infl_mean_score)
+                print(f"Saving mean influence score to {infl_name}")
+
             with mp_engine.finished_idx.get_lock():
                 for idx in range(train_dataset_size):
                     if mp_engine.finished_idx[idx] == False:

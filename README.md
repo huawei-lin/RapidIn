@@ -37,6 +37,8 @@ We also provide an example in `./examples`.
 
 In `./examples`, we provide a dataset `alpaca_52k_with_5k_howdy_backdoor.jsonl`, which is a combination of the alpaca 52k dataset and 5k "Howdy!" backdoored data samples as described in our paper. We also provide a test dataset with 3 data samples in `backdoor_test.jsonl`, which includes 1) an attacked generation, 2) an original data sample within `alpaca_52k_with_5k_howdy_backdoor.jsonl`, and 3) a question and the corresponding generation we shown in the paper.
 
+In order to better test the experiment, 100 test data is randomly selected into `test_data_100.jsonl`, and they are transfered into howdy data `howdy_test_data_100.jsonl`. And the rest data is stored in `alpaca_52k_with_5k_howdy_train.jsonl`.
+
 As shown in the `./example/config_caching.json`, we used [meta-llama/Llama-2-7b-hf](https://huggingface.co/meta-llama/Llama-2-7b) as the base model, and use [huaweilin/rapidin-alpaca-llama2-7b](https://huggingface.co/huaweilin/rapidin-alpaca-llama2-7b) as the LoRA adapter.
 
 ### Caching Stage

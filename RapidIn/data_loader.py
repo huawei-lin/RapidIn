@@ -175,9 +175,9 @@ def get_dataset_size(data_path):
     return len(content)
 
 
-def read_data(data_path, type="supervized"):
+def read_data(data_path, type="supervised"):
     list_data_dict = None
-    if type == "supervized":
+    if type == "supervised":
         with open(data_path) as f:
             list_data_dict = [json.loads(line) for line in f]
     elif type == "unsupervised":
@@ -216,13 +216,13 @@ def _tokenize_fn(
     )
 
 
-def supervized_data_preprocess(
+def supervised_data_preprocess(
     sources: Sequence[str],
     targets: Sequence[str],
     tokenizer: transformers.PreTrainedTokenizer,
 ) -> Dict:
     """
-    Preprocess the supervized data with sources and targets.
+    Preprocess the supervised data with sources and targets.
 
     Params:
         sources: input prompts
@@ -255,7 +255,7 @@ class TrainDataset(Dataset):
         self,
         data_path: str,
         tokenizer: transformers.PreTrainedTokenizer,
-        type: str = "supervized",
+        type: str = "supervised",
         shuffle: bool = True,
         shuffle_seed: int = 42,
         load_idx_list=None,
@@ -269,8 +269,8 @@ class TrainDataset(Dataset):
         self.end_id = end_id
 
         data_dict = None
-        if type == "supervized":
-            data_dict = self.construct_supervized_data_dict(
+        if type == "supervised":
+            data_dict = self.construct_supervised_data_dict(
                 tokenizer, data_path, load_idx_list
             )
         elif type == "unsupervised":
@@ -294,10 +294,10 @@ class TrainDataset(Dataset):
         self.labels = [data_dict["labels"][i] for i in s]
         self.input_ids_lens = [data_dict["input_ids_lens"][i] for i in s]
 
-    def construct_supervized_data_dict(self, tokenizer, data_path, load_idx_list):
+    def construct_supervised_data_dict(self, tokenizer, data_path, load_idx_list):
         logging.warning("Loading data...")
         list_data_dict = read_data(data_path)
-        logging.warning("Formatting supervized inputs...")
+        logging.warning("Formatting supervised inputs...")
         sources = [prompt_no_input.format_map(example) for example in list_data_dict]
         targets = [
             f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict
@@ -312,7 +312,7 @@ class TrainDataset(Dataset):
         print(f"sources: {len(sources)}, targets: {len(targets)}")
 
         logging.warning("Tokenizing inputs... This may take some time...")
-        data_dict = supervized_data_preprocess(sources, targets, tokenizer)
+        data_dict = supervised_data_preprocess(sources, targets, tokenizer)
         print("===data dict keys", data_dict.keys())
         print("--", len(data_dict["input_ids"]))
         return data_dict
@@ -347,7 +347,7 @@ class TestDataset(Dataset):
         self,
         data_path: str,
         tokenizer: transformers.PreTrainedTokenizer,
-        type: str = "supervized",
+        type: str = "supervised",
     ):
         super(TestDataset, self).__init__()
         self.list_data_dict = []
@@ -358,14 +358,14 @@ class TestDataset(Dataset):
         if data_path is None or len(data_path) == 0:
             return
 
-        if type == "supervized":
-            self.construct_supervized_test_data(data_path, tokenizer)
+        if type == "supervised":
+            self.construct_supervised_test_data(data_path, tokenizer)
         elif type == "unsupervised":
             self.construct_unsupervised_test_data(data_path)
         else:
             raise ValueError("Unsupported data type: ", type)
 
-    def construct_supervized_test_data(self, data_path, tokenizer):
+    def construct_supervised_test_data(self, data_path, tokenizer):
         logging.warning("Loading data...")
         list_data_dict = []
         if data_path is not None and len(data_path) != 0:
@@ -382,7 +382,7 @@ class TestDataset(Dataset):
         ]
 
         logging.warning("Tokenizing inputs... This may take some time...")
-        data_dict = supervized_data_preprocess(sources, targets, tokenizer)
+        data_dict = supervised_data_preprocess(sources, targets, tokenizer)
 
         print(f"Detected hotwords: {hotwords}")
         self.labels = []
