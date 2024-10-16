@@ -6,11 +6,6 @@ The implementation for paper "[Token-wise Influential Training Data Retrieval fo
 
 We are still working on it, and adding more new features to this repo.
 
-## Feature Plan
-- [ ] scripts of showing the results of influence estimation (by 6/24/2024)
-- [ ] LaTex templates for drawing figures of token-wise influence visualization (by 7/1/2024)
-- [ ] token-wise influence documentation (by 7/8/2024)
-
 ## Quick Start
 Clone this repo to your local device.
 ```
