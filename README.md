@@ -4,7 +4,12 @@
 
 The implementation for paper "[Token-wise Influential Training Data Retrieval for Large Language Models](https://arxiv.org/abs/2405.11724)" (Accepted at ACL 2024)
 
+RapidIn is a scalable framework adapting to LLMs for estimating the influence of each training data sample. 
+
+**Keywords: Influence Function, Influence Estimation, Training Data Attribution**
+
 We are still working on it, and adding more new features to this repo.
+
 
 ## Quick Start
 Clone this repo to your local device.
