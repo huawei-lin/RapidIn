@@ -8,9 +8,6 @@ RapidIn is a scalable framework adapting to LLMs for estimating the influence of
 
 **Keywords: Influence Function, Influence Estimation, Training Data Attribution**
 
-We are still working on it, and adding more new features to this repo.
-
-
 ## Quick Start
 Clone this repo to your local device.
 ```
