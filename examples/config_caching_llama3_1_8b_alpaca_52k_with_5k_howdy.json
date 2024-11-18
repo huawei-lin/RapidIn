@@ -1,0 +1,29 @@
+{
+    "data": {
+        "train_data_path": "./datasets/alpaca_52k_with_5k_howdy_train.jsonl",
+        "type": "supervised"
+    },
+    "influence": {
+        "outdir": "output_dir",
+        "seed": 42,
+        "cal_words_infl": false,
+        "save_to_grads_path": true,
+        "n_threads": 1,
+        "RapidGrad": {
+            "enable": true,
+            "RapidGrad_K": 65536,
+            "shuffle_lambda": 20
+        },
+        "offload_train_grad": false,
+        "skip_test": true,
+        "skip_influence": true,
+        "grads_path": "./grads_path_llama_3_1_8b_alpaca_52k_with_5k_howdy/"
+    },
+    "model": {
+        "model_path": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        "checkpoint": null,
+        "lora_path": null,
+        "max_length": 512,
+        "load_in_4bit": false
+    }
+}

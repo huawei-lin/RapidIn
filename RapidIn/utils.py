@@ -1,221 +1,432 @@
-import sys
+import os
+from typing import Dict, Optional, Sequence
+from transformers import (
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    AutoModelForCausalLM,
+)
 import json
-import logging
-from pathlib import Path
-from datetime import datetime as dt
-import datetime
-from tqdm import tqdm
-import collections.abc
+import copy
 import torch
+import logging
+from torch.utils.data import Dataset
+from peft import (
+    PeftModel,
+    set_peft_model_state_dict,
+    prepare_model_for_kbit_training,
+    LoraConfig,
+    get_peft_model,
+)
+import random
+import transformers
+from safetensors.torch import load_file
+from datasets import load_from_disk
 
-tqdm_dict = {}
-def save_json(json_obj, json_path, append_if_exists=False,
-              overwrite_if_exists=False, unique_fn_if_exists=True):
-    """Saves a json file
 
-    Arguments:
-        json_obj: json, json object
-        json_path: Path, path including the file name where the json object
-            should be saved to
-        append_if_exists: bool, append to the existing json file with the same
-            name if it exists (keep the json structure intact)
-        overwrite_if_exists: bool, xor with append, overwrites any existing
-            target file
-        unique_fn_if_exsists: bool, appends the current date and time to the
-            file name if the target file exists already.
+IGNORE_INDEX = -100
+DEFAULT_PAD_TOKEN = "[PAD]"
+DEFAULT_EOS_TOKEN = "</s>"
+DEFAULT_BOS_TOKEN = "<s>"
+DEFAULT_UNK_TOKEN = "<unk>"
+NEW_CACHE_DIR = "new_cache_dir/"
+prompt_no_input = (
+    "Below is an instruction that describes a task. "
+    "Write a response that appropriately completes the request.\n\n"
+    "### Instruction:\n{instruction}\n\n### Response: "
+)
+
+
+def smart_tokenizer_and_embedding_resize(
+    special_tokens_dict,
+    tokenizer,
+    model,
+):
+    """Resize tokenizer and embedding.
+
+    Note: This is the unoptimized version that may make your embedding size not be divisible by 64.
     """
-    if isinstance(json_path, str):
-        json_path = Path(json_path)
+    num_new_tokens = tokenizer.add_special_tokens(special_tokens_dict)
+    model.resize_token_embeddings(len(tokenizer))
 
-    if overwrite_if_exists:
-        append_if_exists = False
-        unique_fn_if_exists = False
+    if num_new_tokens > 0:
+        input_embeddings = model.get_input_embeddings().weight.data
+        output_embeddings = model.get_output_embeddings().weight.data
 
-    if unique_fn_if_exists:
-        overwrite_if_exists = False
-        append_if_exists = False
-        if json_path.exists():
-            time = dt.now().strftime("%Y-%m-%d-%H-%M-%S")
-            json_path = json_path.parents[0] / f'{str(json_path.stem)}_{time}'\
-                                               f'{str(json_path.suffix)}'
+        input_embeddings_avg = input_embeddings[:-num_new_tokens].mean(
+            dim=0, keepdim=True
+        )
+        output_embeddings_avg = output_embeddings[:-num_new_tokens].mean(
+            dim=0, keepdim=True
+        )
 
-    if overwrite_if_exists:
-        append_if_exists = False
-        with open(json_path, 'w+') as fout:
-            json.dump(json_obj, fout, indent=None)
-        return json_path
-
-    if append_if_exists:
-        if json_path.exists():
-            with open(json_path, 'r') as fin:
-                read_file = json.load(fin)
-            read_file.update(json_obj)
-            with open(json_path, 'w+') as fout:
-                json.dump(read_file, fout, indent=None)
-            return json_path
-
-    with open(json_path, 'w+') as fout:
-        json.dump(json_obj, fout, indent=None)
-
-    return json_path
-
-def load_json(json_path, key2int=True):
-    def covert_key_to_int(d):
-        new_dict = {}
-        for k, v in d.items():
-            if k.isnumeric() == True:
-                k = int(k)
-            if isinstance(v, dict):
-                v = covert_key_to_int(v)
-            new_dict[k] = v
-        return new_dict
-
-    with open(json_path, 'r') as f:
-        result = json.load(f)
-
-    result = covert_key_to_int(result)
-    return result
+        input_embeddings[-num_new_tokens:] = input_embeddings_avg
+        output_embeddings[-num_new_tokens:] = output_embeddings_avg
 
 
-
-def display_progress(text, current_step, last_step, enabled=True,
-                     fix_zero_start=True, new_line=False, run_time=None, cur_time=None):
-    """Draws a progress indicator on the screen with the text preceeding the
-    progress
-
-    Arguments:
-        test: str, text displayed to describe the task being executed
-        current_step: int, current step of the iteration
-        last_step: int, last possible step of the iteration
-        enabled: bool, if false this function will not execute. This is
-            for running silently without stdout output.
-        fix_zero_start: bool, if true adds 1 to each current step so that the
-            display starts at 1 instead of 0, which it would for most loops
-            otherwise.
-    """
-    if not enabled:
-        return
-
-    # Fix display for most loops which start with 0, otherwise looks weird
-    if fix_zero_start:
-        current_step = current_step + 1
-
-    if text not in tqdm_dict.keys():
-        tqdm_dict[text] = tqdm(total=last_step, desc=text)
-    tqdm_dict[text].n = current_step
-    tqdm_dict[text].refresh()
+def create_special_tokens_dict(tokenizer):
+    special_tokens_dict = dict()
+    if tokenizer.pad_token is None:
+        special_tokens_dict["pad_token"] = DEFAULT_PAD_TOKEN
+    if tokenizer.eos_token is None:
+        special_tokens_dict["eos_token"] = DEFAULT_EOS_TOKEN
+    if tokenizer.bos_token is None:
+        special_tokens_dict["bos_token"] = DEFAULT_BOS_TOKEN
+    if tokenizer.unk_token is None:
+        special_tokens_dict["unk_token"] = DEFAULT_UNK_TOKEN
+    return special_tokens_dict
 
 
-def init_logging(filename=None):
-    """Initialises log/stdout output
+def get_model_tokenizer(config, **kwargs):
+    tokenizer = get_tokenizer(config, **kwargs)
+    model = get_model(config, tokenizer, **kwargs)
+    return model, tokenizer
 
-    Arguments:
-        filename: str, a filename can be set to output the log information to
-            a file instead of stdout"""
-    log_lvl = logging.INFO
-    log_format = '%(asctime)s: %(message)s'
-    if filename:
-        logging.basicConfig(handlers=[logging.FileHandler(filename),
-                                      logging.StreamHandler(sys.stdout)],
-                            level=log_lvl,
-                            format=log_format)
+
+def get_model(config, tokenizer=None, **kwargs):
+    device_map = kwargs.get("device_map", None)
+    model_path = config.model_path
+    logging.warning("Loading model...")
+    model = None
+    bnb_config = None
+    if config.load_in_4bit == True:
+        print("load_in_4bit:", config.load_in_4bit)
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            # load_in_8bit=False,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+        )
+
+    if device_map is None:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path, low_cpu_mem_usage=False, cache_dir=NEW_CACHE_DIR
+        )
     else:
-        logging.basicConfig(stream=sys.stdout, level=log_lvl,
-                            format=log_format)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            quantization_config=bnb_config,
+            device_map=device_map,
+            cache_dir=NEW_CACHE_DIR,
+        )
+
+    if tokenizer is not None:
+        special_tokens_dict = create_special_tokens_dict(tokenizer)
+
+        smart_tokenizer_and_embedding_resize(
+            special_tokens_dict=special_tokens_dict,
+            tokenizer=tokenizer,
+            model=model,
+        )
+
+    if config.load_in_4bit == True:
+        model = prepare_model_for_kbit_training(model)
+
+    # lora will be added to the base model
+    if config.checkpoint is not None:
+        model = PeftModel.from_pretrained(
+            model, config.checkpoint, is_trainable=True, cache_dir=NEW_CACHE_DIR
+        )
+
+        # load lora from checkpoint
+        checkpoint_safetensors = os.path.join(
+            config.checkpoint, "adapter_model.safetensors"
+        )  # only LoRA model - LoRA config above has to fit
+        adapters_weights = load_file(checkpoint_safetensors)
+        set_peft_model_state_dict(model, adapters_weights)
+    elif config.lora_path is not None:
+        # load lora from lora path in huggingface
+        logging.warning(f"Loading lora adapter...")
+        model.enable_input_require_grads()
+        model = PeftModel.from_pretrained(
+            model,
+            config.lora_path,
+            is_trainable=True,
+            device_map=device_map,
+            cache_dir=NEW_CACHE_DIR,
+        )
+        model.print_trainable_parameters()
+
+    model.config.use_cache = False
+    model.is_parallelizable = True
+    model.model_parallel = True
+
+    #     if torch.__version__ >= "2":
+    #         model = torch.compile(model)
+    # model.eval()
+    model.train()
+    return model
 
 
-def get_default_config():
-    """Returns a default config file"""
-    config = {
-        "data": {
-            "train_data_path": None,
-            "test_data_path": None,
-            "begin_id": None,
-            "end_id": None,
-            "test_begin_id": None,
-            "test_end_id": None,
-        },
-        "influence": {
-            "outdir": "outdir",
-            "seed": 42,
-            "IF": {
-              "recursion_depth": 5,
-              "r_averaging": 3,
-              "scale": 50000,
-             },
-            "cal_words_infl": False,
-            "grads_path": None,
-            "load_from_grads_path": False,
-            "save_to_grads_path": False,
-            "delete_model": False,
-            "n_threads": 1,
-            "RapidGrad": {
-                "enable": False,
-                "RapidGrad_M": 1,
-                "RapidGrad_K": 65536,
-                "shuffle_lambda": 20,
-                "multi_k_save_path_list": None # only assign by program
-            },
-            "deepspeed": {
-                "enable": False,
-                "config_path": None,
-            },
-            "offload_test_grad": True,
-            "offload_train_grad": False,
-            "calculate_infl_in_gpu": False,
-            "skip_test": False,
-            "skip_influence": False,
-            "infl_method": "TracIn", # TracIn, IF. (default: TracIn)
-            "top_k": 1000,
-        },
-        "model": {
-            "model_path": None,
-            "lora_path": None,
-            "max_length": None,
-            "load_in_4bit": False,
-        }
-    }
-
-    return config
-
-def sanity_check(config):
-    if config.influence.RapidGrad.enable and isinstance(config.influence.RapidGrad.RapidGrad_K, list):
-        if config.influence.skip_test == False \
-                or config.influence.skip_influence == False:
-            print("RapidGrad_K is a list, set `skip_test` and `skip_influence` to True")
-            config.influence.skip_test = True
-            config.influence.skip_influence = True
-        if config.influence.save_to_grads_path == False or config.influence.grads_path is None:
-            assert("RapidGrad_K is a list, set `save_to_grads_path` to True and assign `grads_path`.")
+def get_tokenizer(config, **kwargs):
+    model_path = config.model_path
+    logging.warning("Loading tokenizer...")
+    tokenizer = AutoTokenizer.from_pretrained(model_path, cache_dir=NEW_CACHE_DIR)
+    tokenizer.max_length = config.max_length
+    if not tokenizer.pad_token:
+        tokenizer.add_special_tokens({"pad_token": DEFAULT_PAD_TOKEN})
+    return tokenizer
 
 
-class Struct:
-    """The recursive class for building and representing objects with."""
-    def __init__(self, obj):
-        for k, v in obj.items():
-            if isinstance(v, dict):
-                setattr(self, k, Struct(v))
-            else:
-                setattr(self, k, v)
-
-    def __getitem__(self, val):
-        return self.__dict__[val]
-
-    def __repr__(self):
-        return '{%s}' % str(', '.join('%s : %s' % (k, repr(v)) for (k, v) in self.__dict__.items()))
+def get_dataset_size(data_path):
+    content = None
+    with open(data_path) as f:
+        content = f.readlines()
+    return len(content)
 
 
-def get_config(config_path):
-    """Returns a  config file"""
-    def update(d, u):
-        for k, v in u.items():
-            if isinstance(v, collections.abc.Mapping):
-                d[k] = update(d.get(k, {}), v)
-            else:
-                d[k] = v
-        return d
-    config = get_default_config()
-    config = update(config, json.load(open(config_path)))
-    config = Struct(config)
-    sanity_check(config)
-    return config
+def read_data(data_path, type="supervised"):
+    list_data_dict = None
+    if type == "supervised":
+        with open(data_path) as f:
+            list_data_dict = [json.loads(line) for line in f]
+    elif type == "unsupervised":
+        # TODO: Consier use the tokenizer to transfer id back to text.
+        dataset = load_from_disk(data_path)
+        list_data_dict = dataset["input_ids"]
+    else:
+        raise ValueError("Unsupported data type: ", type)
+    return list_data_dict
+
+
+def _tokenize_fn(
+    strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer
+) -> Dict:
+    """Tokenize a list of strings."""
+    tokenized_list = [
+        tokenizer(
+            text,
+            return_tensors="pt",
+            padding="longest",
+            max_length=tokenizer.max_length,
+            truncation=True,
+        )
+        for text in strings
+    ]
+    input_ids = labels = [tokenized.input_ids[0] for tokenized in tokenized_list]
+    input_ids_lens = labels_lens = [
+        tokenized.input_ids.ne(tokenizer.pad_token_id).sum().item()
+        for tokenized in tokenized_list
+    ]
+    return dict(
+        input_ids=input_ids,
+        labels=labels,
+        input_ids_lens=input_ids_lens,
+        labels_lens=labels_lens,
+    )
+
+
+def supervised_data_preprocess(
+    sources: Sequence[str],
+    targets: Sequence[str],
+    tokenizer: transformers.PreTrainedTokenizer,
+) -> Dict:
+    """
+    Preprocess the supervised data with sources and targets.
+
+    Params:
+        sources: input prompts
+        targets: expected model responses
+        tokenizer:
+
+    Returns:
+        A dict with 3 keys:
+            - input_ids: tokenized ids of the examples (an example is a source + a target)
+            - labels: same as input_id, but with masks on [:source_len - 1]
+            - input_ids_lens: source input ids lens
+    """
+    examples = [s + t for s, t in zip(sources, targets)]  # exapmles is source + targets
+    examples_tokenized, sources_tokenized = [
+        _tokenize_fn(strings, tokenizer) for strings in (examples, sources)
+    ]
+    input_ids = examples_tokenized["input_ids"]
+    labels = copy.deepcopy(input_ids)
+    for label, source_len in zip(labels, sources_tokenized["input_ids_lens"]):
+        label[: source_len - 1] = IGNORE_INDEX
+    return dict(
+        input_ids=input_ids,
+        labels=labels,
+        input_ids_lens=sources_tokenized["input_ids_lens"],
+    )
+
+
+class TrainDataset(Dataset):
+    def __init__(
+        self,
+        data_path: str,
+        tokenizer: transformers.PreTrainedTokenizer,
+        type: str = "supervised",
+        shuffle: bool = True,
+        shuffle_seed: int = 42,
+        load_idx_list=None,
+        begin_id=None,
+        end_id=None,
+    ):
+        super(TrainDataset, self).__init__()
+        self.shuffle = shuffle
+        self.shuffle_seed = shuffle_seed
+        self.begin_id = begin_id
+        self.end_id = end_id
+
+        data_dict = None
+        if type == "supervised":
+            data_dict = self.construct_supervised_data_dict(
+                tokenizer, data_path, load_idx_list
+            )
+        elif type == "unsupervised":
+            data_dict = self.construct_unsupervised_data_dict(tokenizer, data_path)
+        else:
+            raise ValueError("Unsupported data type: ", type)
+
+        logging.warning("Done tokenizing inputs...")
+
+        if load_idx_list is None:
+            load_idx_list = list(range(len(data_dict["input_ids"])))
+
+        s = list(range(len(load_idx_list)))
+        if self.shuffle == True:
+            random.seed(self.shuffle_seed)
+            random.shuffle(s)
+
+        self.input_ids = [data_dict["input_ids"][i] for i in s]
+        self.sorted_index = [load_idx_list[i] for i in s]
+        # self.list_data_dict = [ list_data_dict[i] for i in s ]
+        self.labels = [data_dict["labels"][i] for i in s]
+        self.input_ids_lens = [data_dict["input_ids_lens"][i] for i in s]
+
+    def construct_supervised_data_dict(self, tokenizer, data_path, load_idx_list):
+        logging.warning("Loading data...")
+        list_data_dict = read_data(data_path)
+        logging.warning("Formatting supervised inputs...")
+        sources = [prompt_no_input.format_map(example) for example in list_data_dict]
+        targets = [
+            f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict
+        ]
+        if self.begin_id is not None:
+            if self.end_id is None:
+                self.end_id = len(sources)
+            load_idx_list = list(range(self.begin_id, self.end_id))
+        if load_idx_list is not None:
+            sources = [sources[x] for x in load_idx_list]
+            targets = [targets[x] for x in load_idx_list]
+        print(f"sources: {len(sources)}, targets: {len(targets)}")
+
+        logging.warning("Tokenizing inputs... This may take some time...")
+        data_dict = supervised_data_preprocess(sources, targets, tokenizer)
+        print("===data dict keys", data_dict.keys())
+        print("--", len(data_dict["input_ids"]))
+        return data_dict
+
+    # use the tokenized and grouped data
+    def construct_unsupervised_data_dict(self, tokenizer, data_path):
+        dataset = load_from_disk(data_path)
+        input_ids = [torch.tensor(id) for id in dataset["input_ids"]][self.begin_id:self.end_id]
+        labels = [torch.tensor(id) for id in dataset["labels"]][self.begin_id:self.end_id]
+        return dict(
+            input_ids=input_ids,
+            labels=labels,
+            input_ids_lens=[
+                torch.tensor(len(input_id)) for input_id in dataset["input_ids"]
+            ],
+        )
+
+    def __len__(self):
+        return len(self.input_ids)
+
+    def __getitem__(self, i):
+        return (
+            self.input_ids[i],
+            self.labels[i],
+            self.input_ids_lens[i],
+            self.sorted_index[i],
+        )
+
+
+class TestDataset(Dataset):
+    def __init__(
+        self,
+        data_path: str,
+        tokenizer: transformers.PreTrainedTokenizer,
+        type: str = "supervised",
+    ):
+        super(TestDataset, self).__init__()
+        self.list_data_dict = []
+        self.input_ids = []
+        self.input_ids_lens = []
+        self.hotwords = []
+
+        if data_path is None or len(data_path) == 0:
+            return
+
+        if type == "supervised":
+            self.construct_supervised_test_data(data_path, tokenizer)
+        elif type == "unsupervised":
+            self.construct_unsupervised_test_data(data_path)
+        else:
+            raise ValueError("Unsupported data type: ", type)
+
+    def construct_supervised_test_data(self, data_path, tokenizer):
+        logging.warning("Loading data...")
+        list_data_dict = []
+        if data_path is not None and len(data_path) != 0:
+            list_data_dict = read_data(data_path)
+
+        logging.warning("Formatting inputs...")
+        sources = [prompt_no_input.format_map(example) for example in list_data_dict]
+        targets = [
+            f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict
+        ]
+        hotwords = [
+            [hw.strip() for hw in example.get("hotwords", "").split("|") if hw != ""]
+            for example in list_data_dict
+        ]
+
+        logging.warning("Tokenizing inputs... This may take some time...")
+        data_dict = supervised_data_preprocess(sources, targets, tokenizer)
+
+        print(f"Detected hotwords: {hotwords}")
+        self.labels = []
+        for hotwords_list, label_tokens in zip(hotwords, data_dict["labels"]):
+            if len(hotwords_list) == 0:
+                self.labels.append(label_tokens)
+                continue
+            label_tokens = label_tokens.tolist()
+            hotwords_tokens = [
+                tokenizer.encode(x, add_special_tokens=False) for x in hotwords_list
+            ]
+            new_label = [-100 for _ in range(len(label_tokens))]
+            label_tokens_len = len(label_tokens)
+            for hotword in hotwords_tokens:  # hotword: [1, 2, 3]
+                hotword_len = len(hotword)
+                for i in range(label_tokens_len):
+                    if i + hotword_len >= label_tokens_len:
+                        break
+                    if hotword == label_tokens[i : i + hotword_len]:
+                        new_label[i : i + hotword_len] = label_tokens[
+                            i : i + hotword_len
+                        ]
+            self.labels.append(torch.LongTensor(new_label))
+
+        self.list_data_dict = list_data_dict
+        self.input_ids = data_dict["input_ids"]
+        self.input_ids_lens = data_dict["input_ids_lens"]
+        self.hotwords = hotwords
+
+    # Use the processed (tokenized and grouped) data
+    def construct_unsupervised_test_data(self, data_path):
+        dataset = load_from_disk(data_path)
+        input_ids = [torch.tensor(id) for id in dataset["input_ids"]]
+        labels = [torch.tensor(id) for id in dataset["labels"]]
+
+        self.input_ids = input_ids
+        self.labels = labels
+        self.input_ids_lens = [
+            torch.tensor(len(input_id)) for input_id in dataset["input_ids"]
+        ]
+        print("===Test data ready: ", len(self.input_ids))
+
+    def __len__(self):
+        return len(self.input_ids)
+
+    def __getitem__(self, i) -> Dict[str, torch.Tensor]:
+        return self.input_ids[i], self.labels[i], self.input_ids_lens[i]

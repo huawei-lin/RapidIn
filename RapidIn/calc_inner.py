@@ -103,6 +103,10 @@ def calc_loss(y, t):
 
 
 def grad_z(z, t, input_len, model, gpu=-1, return_words_loss=False, s_test_vec=None, need_reshape=True, use_deepspeed=False):
+    """
+    This function calculates the gradient of a given input `z` with respect to the loss of a model
+    `model` and returns the reshaped gradient.
+    """
     z = default_collate([z])
     t = default_collate([t])
     if z.dim() > 2:
