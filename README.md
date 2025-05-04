@@ -8,6 +8,8 @@ RapidIn is a scalable framework adapting to LLMs for estimating the influence of
 
 **Keywords: Influence Function, Influence Estimation, Training Data Attribution**
 
+**Updated**: Building on RapidIn, we developed a scalable data valuation method, [ALinFiK](https://aclanthology.org/anthology-files/anthology-files/pdf/naacl/2025.naacl-long.589.pdf), designed for third-party use cases. ALinFiK enables efficient early-stage data selection through feature influence estimation, significantly improving model training efficiency. This work has been accepted for publication at NAACL 2025.
+
 ## Quick Start
 Clone this repo to your local device.
 ```
