@@ -13,9 +13,9 @@ RapidIn is a scalable framework adapting to LLMs for estimating the influence of
 
 ## Applications
 
-- (NAACL 2025) [ALinFiK: Learning to Approximate Linearized Future Influence Kernel for Scalable Third-Parity LLM Data Valuation](https://aclanthology.org/2025.naacl-long.589/)
 - (ICLR 2026) [Randomized Antipodal Search Done Right for Data Pareto Improvement of LLM Unlearning](https://openreview.net/forum?id=Xn6EnJZghu)
 - (CVPR 2026 - Findings) [DMin: Scalable Training Data Influence Estimation for Diffusion Models](https://arxiv.org/abs/2412.08637)
+- (NAACL 2025) [ALinFiK: Learning to Approximate Linearized Future Influence Kernel for Scalable Third-Parity LLM Data Valuation](https://aclanthology.org/2025.naacl-long.589/)
 - (ArXiv) [RapidUn: Influence-Driven Parameter Reweighting for Efficient Large Language Model Unlearning](https://arxiv.org/abs/2512.04457)
 
 ## Quick Start
