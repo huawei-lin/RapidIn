@@ -10,6 +10,14 @@ RapidIn is a scalable framework adapting to LLMs for estimating the influence of
 
 **Update**: Building on RapidIn, we developed a scalable data valuation method, [ALinFiK](https://aclanthology.org/anthology-files/anthology-files/pdf/naacl/2025.naacl-long.589.pdf), designed for third-party use cases. ALinFiK enables efficient early-stage data selection through feature influence estimation, significantly improving model training efficiency. This work has been accepted for publication at NAACL 2025.
 
+
+## Applications
+
+- (NAACL 2025) [ALinFiK: Learning to Approximate Linearized Future Influence Kernel for Scalable Third-Parity LLM Data Valuation](https://aclanthology.org/2025.naacl-long.589/)
+- (ICLR 2026) [Randomized Antipodal Search Done Right for Data Pareto Improvement of LLM Unlearning](https://openreview.net/forum?id=Xn6EnJZghu)
+- (CVPR 2026 - Findings) [DMin: Scalable Training Data Influence Estimation for Diffusion Models](https://arxiv.org/abs/2412.08637)
+- (ArXiv) [RapidUn: Influence-Driven Parameter Reweighting for Efficient Large Language Model Unlearning](https://arxiv.org/abs/2512.04457)
+
 ## Quick Start
 Clone this repo to your local device.
 ```
@@ -120,6 +128,22 @@ model:
   address      = {Albuquerque, New Mexico},
   pages        = {11756--11771},
   year         = {2025}
+}
+
+@inproceedings{liu2026randomized,
+  author       = {Ziwen Liu and
+                  Huawei Lin and
+                  Yide Ran and
+                  Denghui Zhang and
+                  Jianwen Xie and
+                  Chuan Li and
+                  Weijie Zhao and
+                  Zhaozhuo Xu},
+  title        = {Randomized Antipodal Search Done Right for Data Pareto Improvement
+                  of {LLM} Unlearning},
+  booktitle    = {The Fourteenth International Conference on Learning Representations},
+  year         = {2026},
+  url          = {https://openreview.net/forum?id=Xn6EnJZghu}
 }
 ```
 
